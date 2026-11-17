@@ -1,0 +1,10 @@
+# The dsh-plugins composition layer: one loader row per plugin. Adding a
+# plugin means adding a subpath export and one row here — the profile's
+# bundle list never grows past this single package.
+
+- insert:
+    # `/effort`: the agent-owned reasoning effort, switched through the
+    # durable model selection and, with an interactive frontend mounted,
+    # through the effort-picker waterfall that terminal frontends answer.
+    - id: command-effort
+      name: 'dsh-plugins/effort'

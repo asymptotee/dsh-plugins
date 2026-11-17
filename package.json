@@ -1,0 +1,61 @@
+{
+  "name": "dsh-plugins",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin family: standalone commands that compose over a dsh profile alongside any frontend. One install mounts them all.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./effort": {
+      "types": "./lib/types/command-effort/index.d.ts",
+      "default": "./lib/command-effort/index.js"
+    },
+    "./effort/types": {
+      "types": "./lib/types/command-effort/types.d.ts",
+      "default": "./lib/command-effort/types.js"
+    },
+    "./shared": {
+      "types": "./lib/types/shared/index.d.ts",
+      "default": "./lib/shared/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml"
+  ],
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "verify": "pnpm run typecheck && pnpm test"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-agent": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-commands": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.2.2-rc.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-commands": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  }
+}
