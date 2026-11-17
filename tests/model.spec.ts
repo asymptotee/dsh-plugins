@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { applyModel as apply } from '../src/index.ts'
-import type { ModelPickRequest } from '../src/index.ts'
+import type { PickerRequest } from '../src/index.ts'
 
 interface RegisteredDef {
   name: string
@@ -37,8 +37,8 @@ function fakeEnv(
     },
   }
   const registered: RegisteredDef[] = []
-  let pickerAnswerer: ((req: ModelPickRequest) => Promise<unknown>) | undefined
-  let lastRequest: ModelPickRequest | undefined
+  let pickerAnswerer: ((req: PickerRequest) => Promise<unknown>) | undefined
+  let lastRequest: PickerRequest | undefined
   const ctx = {
     inject: (_deps: readonly string[], cb: (c: { commands: { register(def: RegisteredDef): void } }) => void) => {
       cb({ commands: { register: (def: RegisteredDef) => registered.push(def) } })
@@ -52,7 +52,7 @@ function fakeEnv(
         },
       }
       : undefined),
-    waterfall: async (_name: string, req: ModelPickRequest, fallback: () => Promise<unknown>) => {
+    waterfall: async (_name: string, req: PickerRequest, fallback: () => Promise<unknown>) => {
       lastRequest = req
       return pickerAnswerer === undefined ? fallback() : pickerAnswerer(req)
     },
@@ -65,7 +65,7 @@ function fakeEnv(
     def: () => registered[0]!,
     recorded: () => recorded,
     lastRequest: () => lastRequest,
-    setPickerAnswerer: (fn: (req: ModelPickRequest) => Promise<unknown>) => { pickerAnswerer = fn },
+    setPickerAnswerer: (fn: (req: PickerRequest) => Promise<unknown>) => { pickerAnswerer = fn },
   }
 }
 
@@ -120,16 +120,18 @@ describe('/model command plugin', () => {
 
   it('picks through the waterfall answerer', async () => {
     const env = fakeEnv()
-    env.setPickerAnswerer(async () => ({ provider: 'other', model: 'model-a' }))
+    env.setPickerAnswerer(async () => ({ value: 'other/model-a' }))
     expect(await env.invoke('')).toEqual({ kind: 'success', text: 'Model set to other/model-a' })
     expect(env.recorded()).toEqual({ provider: 'other', model: 'model-a' })
     // The request carries every route and the current mark.
-    expect(env.lastRequest()?.models).toEqual([
-      { provider: 'anthropic', model: 'model-a', name: 'Model A' },
-      { provider: 'anthropic', model: 'model-b', name: 'Model B', description: 'The slower one' },
-      { provider: 'other', model: 'model-a', name: 'Model A (other)' },
+    expect(env.lastRequest()?.kind).toBe('list')
+    expect(env.lastRequest()?.title).toBe('Model')
+    expect(env.lastRequest()?.options).toEqual([
+      { value: 'anthropic/model-a', label: 'anthropic/model-a', note: 'Model A' },
+      { value: 'anthropic/model-b', label: 'anthropic/model-b', note: 'Model B', description: 'The slower one' },
+      { value: 'other/model-a', label: 'other/model-a', note: 'Model A (other)' },
     ])
-    expect(env.lastRequest()?.current).toBe('anthropic/model-a')
+    expect(env.lastRequest()?.currentIndex).toBe(0)
   })
 
   it('reports Cancelled when the picker cancels', async () => {

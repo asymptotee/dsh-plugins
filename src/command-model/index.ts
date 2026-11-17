@@ -6,10 +6,10 @@
  * transcript on the next step.
  *
  * `/model <provider>/<model>` (or a bare model id when the route is
- * unambiguous) sets directly, a bare `/model` dispatches the
- * `model-picker/request` waterfall for an interactive pick, and with no
- * answerer the command degrades to a headless text report. `/model status`
- * reports the route in effect.
+ * unambiguous) sets directly, a bare `/model` opens a picker through the
+ * shared `picker/request` waterfall, and with no answerer the command
+ * degrades to a headless text report. `/model status` reports the route in
+ * effect.
  * @module dsh-plugins/model
  */
 
@@ -18,9 +18,15 @@ import type { Context } from '@deepseek-ai/cordis'
 // register call itself stays structural for version tolerance.
 import type {} from '@deepseek-ai/dsh-commands'
 import type { AgentModelLike, CommandResultLike } from '../shared/index.ts'
-import type { ModelOptionInfo, ModelPickRequest } from './types.ts'
+import { askPicker, nextPickerId } from '../picker/index.ts'
 
-export type { ModelOptionInfo, ModelPickAnswer, ModelPickRequest } from './types.ts'
+/** One discovered route, as this command builds it from the adapter catalog. */
+export interface ModelOptionInfo {
+  readonly provider: string
+  readonly model: string
+  readonly name?: string
+  readonly description?: string
+}
 
 /** The structural face of one discovered model. */
 interface ModelInfoLike {
@@ -114,20 +120,34 @@ export function apply(ctx: Context): void {
           // waterfall, a headless report when none is mounted.
           const models = await discoverRoutes(llm)
           if (models.length === 0) return { kind: 'error', text: 'No models disclosed by the mounted adapters' }
-          const request: ModelPickRequest = {
-            agent,
-            models,
-            ...(currentLabel === undefined ? {} : { current: currentLabel }),
+          const currentIndex = currentLabel === undefined
+            ? -1
+            : models.findIndex(option => routeLabel(option.provider, option.model) === currentLabel)
+          const outcome = await askPicker(ctx as never, {
+            pickerId: nextPickerId('model'),
+            kind: 'list',
+            title: 'Model',
+            options: models.map(option => ({
+              value: routeLabel(option.provider, option.model),
+              label: routeLabel(option.provider, option.model),
+              // A display name that merely repeats the id adds nothing.
+              ...(option.name === undefined || option.name === option.model || option.name === routeLabel(option.provider, option.model)
+                ? {}
+                : { note: option.name }),
+              ...(option.description === undefined ? {} : { description: option.description }),
+            })),
+            ...(currentIndex === -1 ? {} : { currentIndex }),
             signal,
-          }
-          const answer = await ctx.waterfall('model-picker/request', request, () => Promise.resolve(undefined))
-          if (answer === undefined) {
+          })
+          if (outcome.kind === 'unanswered') {
             const shown = currentLabel ?? 'unset'
             const listed = models.map(option => routeLabel(option.provider, option.model)).join(' · ')
             return { kind: 'success', text: `Model: ${shown} · available: ${listed}` }
           }
-          if ('cancelled' in answer) return { kind: 'success', text: 'Cancelled' }
-          return applyRoute(answer.provider, answer.model)
+          if (outcome.kind === 'cancelled') return { kind: 'success', text: 'Cancelled' }
+          const picked = models.find(option => routeLabel(option.provider, option.model) === outcome.value)
+          if (picked === undefined) return { kind: 'error', text: `Unknown model: ${outcome.value}` }
+          return applyRoute(picked.provider, picked.model)
         }
 
         // A direct set: an explicit `provider/model`, else a bare model id

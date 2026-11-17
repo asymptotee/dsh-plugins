@@ -5,10 +5,9 @@
  * fork exactly like the built-in commands' domain events.
  *
  * `<level>` sets directly, `off` clears back to the model default, and a
- * bare `/effort` dispatches the `effort-picker/request` waterfall: a mounted
- * frontend answers it with an interactive selection, and with no answerer the
- * command degrades to a headless text report.
- * @module dsh-command-effort
+ * bare `/effort` opens a picker through the shared `picker/request`
+ * waterfall; with no answerer it degrades to a headless text report.
+ * @module dsh-plugins/effort
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -16,11 +15,9 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 // Pulls the commands registry's Context augmentation into this program; the
 // register call itself stays structural for version tolerance.
 import type {} from '@deepseek-ai/dsh-commands'
-import type { AgentModelLike, CommandResultLike, EffortLevelInfo, LlmLike, ModelInfoLike } from '../shared/index.ts'
+import type { AgentModelLike, CommandResultLike, LlmLike, ModelInfoLike } from '../shared/index.ts'
 import { nearestLowerEffort, withDescription } from '../shared/index.ts'
-import type { EffortPickRequest } from './types.ts'
-
-export type { EffortLevelInfo, EffortPickAnswer, EffortPickRequest } from './types.ts'
+import { askPicker, nextPickerId } from '../picker/index.ts'
 
 interface AgentLike {
   model: AgentModelLike
@@ -81,29 +78,35 @@ export function apply(ctx: Context): void {
           // Bare /effort: an interactive pick when a frontend answers the
           // waterfall, a headless report when none is mounted.
           if (efforts.length === 0) return { kind: 'error', text: 'No effort levels disclosed for this model' }
-          const levels: EffortLevelInfo[] = efforts.map(level => withDescription({
-            id: level.id as string,
-            ...(level.name === undefined ? {} : { name: level.name }),
-            ...(level.description === undefined ? {} : { description: level.description }),
-          }))
           const currentId = agent.model.current()?.reasoningEffort as string | undefined
-          const request: EffortPickRequest = {
-            agent,
-            levels,
-            ...(currentId === undefined ? {} : { current: currentId }),
+          const currentIndex = currentId === undefined ? -1 : availableIds.indexOf(currentId)
+          const outcome = await askPicker(ctx as never, {
+            pickerId: nextPickerId('effort'),
+            kind: 'scale',
+            title: 'Effort',
+            options: efforts.map(level => {
+              const described = withDescription({
+                id: level.id as string,
+                ...(level.name === undefined ? {} : { name: level.name }),
+                ...(level.description === undefined ? {} : { description: level.description }),
+              })
+              return {
+                value: level.id as string,
+                label: level.id as string,
+                ...(described.description === undefined ? {} : { description: described.description }),
+              }
+            }),
+            ...(currentIndex === -1 ? {} : { currentIndex }),
+            scaleEnds: { low: 'Faster', high: 'Smarter' },
             signal,
-          }
-          const answer = await ctx.waterfall('effort-picker/request', request, () => Promise.resolve(undefined))
-          if (answer === undefined) {
+          })
+          if (outcome.kind === 'unanswered') {
             const shown = currentId ?? info?.reasoning?.defaultEffort ?? 'model default'
-            return {
-              kind: 'success',
-              text: `Reasoning effort: ${shown} · available: ${availableIds.join(' · ')}`,
-            }
+            return { kind: 'success', text: `Reasoning effort: ${shown} · available: ${availableIds.join(' · ')}` }
           }
-          if ('cancelled' in answer) return { kind: 'success', text: 'Cancelled' }
-          const match = efforts.find(level => (level.id as string) === answer.level)
-          if (match === undefined) return { kind: 'error', text: `Unknown effort: ${answer.level}` }
+          if (outcome.kind === 'cancelled') return { kind: 'success', text: 'Cancelled' }
+          const match = efforts.find(level => (level.id as string) === outcome.value)
+          if (match === undefined) return { kind: 'error', text: `Unknown effort: ${outcome.value}` }
           return applySelection(match.id as ReasoningEffortId)
         }
 

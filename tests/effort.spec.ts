@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { applyEffort as apply } from '../src/index.ts'
-import type { EffortPickRequest } from '../src/index.ts'
+import type { PickerRequest } from '../src/index.ts'
 
 interface RegisteredDef {
   name: string
@@ -30,8 +30,8 @@ function fakeEnv(
     session: { id: 's1' },
   }
   const registered: RegisteredDef[] = []
-  let pickerAnswerer: ((req: EffortPickRequest) => Promise<unknown>) | undefined
-  let lastRequest: EffortPickRequest | undefined
+  let pickerAnswerer: ((req: PickerRequest) => Promise<unknown>) | undefined
+  let lastRequest: PickerRequest | undefined
   const ctx = {
     inject: (_deps: readonly string[], cb: (c: { commands: { register(def: RegisteredDef): void } }) => void) => {
       cb({ commands: { register: (def: RegisteredDef) => registered.push(def) } })
@@ -46,7 +46,7 @@ function fakeEnv(
         }),
       }
       : undefined),
-    waterfall: async (_name: string, req: EffortPickRequest, fallback: () => Promise<unknown>) => {
+    waterfall: async (_name: string, req: PickerRequest, fallback: () => Promise<unknown>) => {
       lastRequest = req
       return pickerAnswerer === undefined ? fallback() : pickerAnswerer(req)
     },
@@ -58,7 +58,7 @@ function fakeEnv(
     invoke,
     recorded: () => recorded,
     lastRequest: () => lastRequest,
-    setPickerAnswerer: (fn: (req: EffortPickRequest) => Promise<unknown>) => { pickerAnswerer = fn },
+    setPickerAnswerer: (fn: (req: PickerRequest) => Promise<unknown>) => { pickerAnswerer = fn },
   }
 }
 
@@ -98,12 +98,18 @@ describe('/effort command plugin', () => {
 
   it('bare /effort picks through the waterfall answerer', async () => {
     const env = fakeEnv(LEVELS)
-    env.setPickerAnswerer(async () => ({ level: 'high' }))
+    env.setPickerAnswerer(async () => ({ value: 'high' }))
     expect(await env.invoke('')).toEqual({ kind: 'success', text: 'Reasoning effort set to high' })
     expect(env.recorded()?.reasoningEffort).toBe('high')
     // The request carries the levels, the current mark, and the signal.
     const request = env.lastRequest()
-    expect(request?.levels).toEqual([{ id: 'low', description: 'Prefer for routine or latency-sensitive tasks.' }, { id: 'high', description: 'The default balance for most tasks.' }])
+    expect(request?.kind).toBe('scale')
+    expect(request?.title).toBe('Effort')
+    expect(request?.options).toEqual([
+      { value: 'low', label: 'low', description: 'Prefer for routine or latency-sensitive tasks.' },
+      { value: 'high', label: 'high', description: 'The default balance for most tasks.' },
+    ])
+    expect(request?.scaleEnds).toEqual({ low: 'Faster', high: 'Smarter' })
     expect(request?.signal).toBeInstanceOf(AbortSignal)
   })
 
@@ -129,9 +135,9 @@ describe('/effort command plugin', () => {
     const env = fakeEnv([{ id: 'turbo' }, { id: 'high', description: 'adapter copy wins' }])
     env.setPickerAnswerer(async () => ({ cancelled: true }))
     await env.invoke('')
-    expect(env.lastRequest()?.levels).toEqual([
-      { id: 'turbo' },
-      { id: 'high', description: 'adapter copy wins' },
+    expect(env.lastRequest()?.options).toEqual([
+      { value: 'turbo', label: 'turbo' },
+      { value: 'high', label: 'high', description: 'adapter copy wins' },
     ])
   })
 })
