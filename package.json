@@ -19,6 +19,14 @@
       "types": "./lib/types/command-effort/types.d.ts",
       "default": "./lib/command-effort/types.js"
     },
+    "./model": {
+      "types": "./lib/types/command-model/index.d.ts",
+      "default": "./lib/command-model/index.js"
+    },
+    "./model/types": {
+      "types": "./lib/types/command-model/types.d.ts",
+      "default": "./lib/command-model/types.js"
+    },
     "./shared": {
       "types": "./lib/types/shared/index.d.ts",
       "default": "./lib/shared/index.js"

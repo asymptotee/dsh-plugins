@@ -8,3 +8,9 @@
     # through the effort-picker waterfall that terminal frontends answer.
     - id: command-effort
       name: 'dsh-plugins/effort'
+
+    # `/model`: the agent-owned model route, switched through the same durable
+    # model selection and, with an interactive frontend mounted, through the
+    # model-picker waterfall it answers.
+    - id: command-model
+      name: 'dsh-plugins/model'
