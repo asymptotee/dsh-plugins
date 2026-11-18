@@ -14,3 +14,8 @@
     # model-picker waterfall it answers.
     - id: command-model
       name: 'dsh-plugins/model'
+
+    # `/context`: the session's token report, folded from the log — a fill
+    # grid, the window's used/free shares, and the turn/step activity.
+    - id: command-context
+      name: 'dsh-plugins/context'

@@ -11,6 +11,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./context": {
+      "types": "./lib/types/command-context/index.d.ts",
+      "default": "./lib/command-context/index.js"
+    },
     "./effort": {
       "types": "./lib/types/command-effort/index.d.ts",
       "default": "./lib/command-effort/index.js"
