@@ -27,6 +27,10 @@
       "types": "./lib/types/picker/index.d.ts",
       "default": "./lib/picker/index.js"
     },
+    "./rename": {
+      "types": "./lib/types/command-rename/index.d.ts",
+      "default": "./lib/command-rename/index.js"
+    },
     "./shared": {
       "types": "./lib/types/shared/index.d.ts",
       "default": "./lib/shared/index.js"

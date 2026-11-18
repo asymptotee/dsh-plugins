@@ -9,11 +9,14 @@ DeepSeek Harness 插件工程：一组独立、可组合的 dsh 插件，装进�
 src/
   index.ts             包入口：re-export 全部公开面
   shared/              共享层：结构化 face 类型、effort 词汇与降级策略
-  command-effort/      `/effort` 命令 + 选档 waterfall
-    index.ts           apply()
-    types.ts           对外契约（request/answer + Cordis 事件声明）
+  picker/              共享 picker 契约：waterfall 请求/应答 + askPicker
+  command-effort/      `/effort` 命令 + 选档弹窗（kind: scale）
+  command-model/       `/model` 命令 + 路由弹窗（kind: list）
+  command-context/     `/context` 命令：会话 token 报告
+  command-rename/      `/rename` 命令：会话标题（显式或重新生成）
 tests/
   effort.spec.ts       fake context 验证注册形状、handler、waterfall 往返
+  ...
 cordis.patch.yml       组合层：每个插件一行 loader row
 ```
 
