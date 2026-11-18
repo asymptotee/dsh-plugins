@@ -78,12 +78,12 @@ describe('/model command plugin', () => {
 
   it('reports the route in effect with status', async () => {
     const env = fakeEnv()
-    expect(await env.invoke('status')).toEqual({ kind: 'success', text: 'Model: anthropic/model-a' })
+    expect(await env.invoke('status')).toEqual({ kind: 'success', text: 'Model: Model A (anthropic/model-a)' })
   })
 
   it('sets an explicit provider/model route', async () => {
     const env = fakeEnv()
-    expect(await env.invoke('anthropic/model-b')).toEqual({ kind: 'success', text: 'Model set to anthropic/model-b' })
+    expect(await env.invoke('anthropic/model-b')).toEqual({ kind: 'success', text: 'Model set to Model B (anthropic/model-b)' })
     expect(env.recorded()).toEqual({ provider: 'anthropic', model: 'model-b' })
   })
 
@@ -96,7 +96,7 @@ describe('/model command plugin', () => {
 
   it('resolves a bare model id when exactly one provider offers it', async () => {
     const env = fakeEnv()
-    expect(await env.invoke('model-b')).toEqual({ kind: 'success', text: 'Model set to anthropic/model-b' })
+    expect(await env.invoke('model-b')).toEqual({ kind: 'success', text: 'Model set to Model B (anthropic/model-b)' })
     expect(env.recorded()).toEqual({ provider: 'anthropic', model: 'model-b' })
   })
 
@@ -121,23 +121,24 @@ describe('/model command plugin', () => {
   it('picks through the waterfall answerer', async () => {
     const env = fakeEnv()
     env.setPickerAnswerer(async () => ({ value: 'other/model-a' }))
-    expect(await env.invoke('')).toEqual({ kind: 'success', text: 'Model set to other/model-a' })
+    expect(await env.invoke('')).toEqual({ kind: 'success', text: 'Model set to Model A (other) (other/model-a)' })
     expect(env.recorded()).toEqual({ provider: 'other', model: 'model-a' })
     // The request carries every route and the current mark.
     expect(env.lastRequest()?.kind).toBe('list')
     expect(env.lastRequest()?.title).toBe('Model')
     expect(env.lastRequest()?.options).toEqual([
-      { value: 'anthropic/model-a', label: 'anthropic/model-a', note: 'Model A' },
-      { value: 'anthropic/model-b', label: 'anthropic/model-b', note: 'Model B', description: 'The slower one' },
-      { value: 'other/model-a', label: 'other/model-a', note: 'Model A (other)' },
+      { value: 'anthropic/model-a', label: 'Model A' },
+      { value: 'anthropic/model-b', label: 'Model B', description: 'The slower one' },
+      { value: 'other/model-a', label: 'Model A (other)' },
     ])
     expect(env.lastRequest()?.currentIndex).toBe(0)
   })
 
-  it('reports Cancelled when the picker cancels', async () => {
+  it('reports the model kept when the picker cancels', async () => {
     const env = fakeEnv()
     env.setPickerAnswerer(async () => ({ cancelled: true }))
-    expect(await env.invoke('')).toEqual({ kind: 'success', text: 'Cancelled' })
+    // Dismissing changes nothing, so the result names what stayed in force.
+    expect(await env.invoke('')).toEqual({ kind: 'success', text: 'Kept model as Model A' })
     expect(env.recorded()).toEqual({ provider: 'anthropic', model: 'model-a' })
   })
 
@@ -158,7 +159,43 @@ describe('/model command plugin', () => {
 
   it('trusts a bare id on the current provider when no catalog exists', async () => {
     const env = fakeEnv([])
-    expect(await env.invoke('custom-model')).toEqual({ kind: 'success', text: 'Model set to anthropic/custom-model' })
+    expect(await env.invoke('custom-model')).toEqual({ kind: 'success', text: 'Model set to custom-model (anthropic/custom-model)' })
     expect(env.recorded()).toEqual({ provider: 'anthropic', model: 'custom-model' })
+  })
+})
+describe('gateway-style catalogs (opaque ids, readable names)', () => {
+  // A proxy fronting several backends: the id is a routing hash and the name
+  // is the only thing a person can read.
+  const GATEWAY = [
+    { provider: 'ts-deepseek', id: 'mode-7f5c1e7c45b6', name: 'Deepseek-v4.1-flash-1017' },
+    { provider: 'ts-pro', id: 'mode-8a8dd030c1ac', name: '高级（Pro）' },
+  ]
+
+  it('shows the readable name and keeps the route verifiable', async () => {
+    const env = fakeEnv(GATEWAY, { initial: { provider: 'ts-deepseek', model: 'mode-7f5c1e7c45b6' } })
+    expect(await env.invoke('status')).toEqual({
+      kind: 'success',
+      text: 'Model: Deepseek-v4.1-flash-1017 (ts-deepseek/mode-7f5c1e7c45b6)',
+    })
+  })
+
+  it('labels picker rows with the name and the provider, not the hash', async () => {
+    const env = fakeEnv(GATEWAY, { initial: { provider: 'ts-deepseek', model: 'mode-7f5c1e7c45b6' } })
+    env.setPickerAnswerer(async () => ({ cancelled: true }))
+    await env.invoke('')
+    expect(env.lastRequest()?.options).toEqual([
+      { value: 'ts-deepseek/mode-7f5c1e7c45b6', label: 'Deepseek-v4.1-flash-1017' },
+      { value: 'ts-pro/mode-8a8dd030c1ac', label: '高级（Pro）' },
+    ])
+  })
+
+  it('falls back to the id when a row declares no distinct name', async () => {
+    const env = fakeEnv([{ provider: 'plain', id: 'deepseek-chat', name: 'deepseek-chat' }], {
+      initial: { provider: 'plain', model: 'deepseek-chat' },
+    })
+    expect(await env.invoke('status')).toEqual({
+      kind: 'success',
+      text: 'Model: deepseek-chat (plain/deepseek-chat)',
+    })
   })
 })

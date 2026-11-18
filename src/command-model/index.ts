@@ -61,9 +61,23 @@ interface CommandsLike {
   }): unknown
 }
 
-/** `provider/model` for display and matching. */
+/** `provider/model` — the technical route, for matching and for the
+ *  parenthetical that lets a reader verify where a request actually goes. */
 export function routeLabel(provider: string, model: string): string {
   return `${provider}/${model}`
+}
+
+/** What a person sees for one route: the adapter's human-readable name when
+ *  it has one distinct from the id, else the id itself. Adapters fronting a
+ *  gateway often use opaque ids (`mode-7f5c…`) and carry the readable name
+ *  separately, so display code must never assume the id is legible. */
+export function modelDisplayName(option: { provider: string; model: string; name?: string }): string {
+  const name = option.name
+  // A name equal to the id (or to the whole route) adds nothing.
+  if (name === undefined || name === '' || name === option.model || name === routeLabel(option.provider, option.model)) {
+    return option.model
+  }
+  return name
 }
 
 /** Every route the mounted adapters advertise, in adapter-preferred order.
@@ -103,22 +117,32 @@ export function apply(ctx: Context): void {
         // The shared tail: apply through the agent-owned selection. The
         // effort carried by the outgoing route is dropped — a level the new
         // route may not offer must not ride along silently.
-        const applyRoute = (provider: string, model: string): CommandResultLike => {
+        const applyRoute = (provider: string, model: string, name?: string): CommandResultLike => {
           agent.model.select({ provider, model })
-          return { kind: 'success', text: `Model set to ${routeLabel(provider, model)}` }
-        }
-
-        if (wanted === 'status') {
-          return currentLabel === undefined
-            ? { kind: 'error', text: 'No model selection is recorded for this session.' }
-            : { kind: 'success', text: `Model: ${currentLabel}` }
+          const label = modelDisplayName({ provider, model, ...(name === undefined ? {} : { name }) })
+          return { kind: 'success', text: `Model set to ${label} (${routeLabel(provider, model)})` }
         }
 
         const llm = ctx.get('llm') as LlmLike | undefined
+        // `currentLabel` is the technical route; the catalog turns it into
+        // the readable name when one is advertised.
+        const routes = await discoverRoutes(llm)
+        const currentOption = currentLabel === undefined
+          ? undefined
+          : routes.find(option => routeLabel(option.provider, option.model) === currentLabel)
+        const currentDisplay = current === undefined
+          ? undefined
+          : modelDisplayName({ ...current, ...(currentOption?.name === undefined ? {} : { name: currentOption.name }) })
+        if (wanted === 'status') {
+          return currentDisplay === undefined || currentLabel === undefined
+            ? { kind: 'error', text: 'No model selection is recorded for this session.' }
+            : { kind: 'success', text: `Model: ${currentDisplay} (${currentLabel})` }
+        }
+
         if (wanted === '') {
           // Bare /model: an interactive pick when a frontend answers the
           // waterfall, a headless report when none is mounted.
-          const models = await discoverRoutes(llm)
+          const models = routes
           if (models.length === 0) return { kind: 'error', text: 'No models disclosed by the mounted adapters' }
           const currentIndex = currentLabel === undefined
             ? -1
@@ -129,11 +153,10 @@ export function apply(ctx: Context): void {
             title: 'Model',
             options: models.map(option => ({
               value: routeLabel(option.provider, option.model),
-              label: routeLabel(option.provider, option.model),
-              // A display name that merely repeats the id adds nothing.
-              ...(option.name === undefined || option.name === option.model || option.name === routeLabel(option.provider, option.model)
-                ? {}
-                : { note: option.name }),
+              // The readable name alone: the provider column added a second
+              // identifier to read on every row without telling a person
+              // anything they act on. `⎿` keeps the full route for verification.
+              label: modelDisplayName(option),
               ...(option.description === undefined ? {} : { description: option.description }),
             })),
             ...(currentIndex === -1 ? {} : { currentIndex }),
@@ -144,15 +167,25 @@ export function apply(ctx: Context): void {
             const listed = models.map(option => routeLabel(option.provider, option.model)).join(' · ')
             return { kind: 'success', text: `Model: ${shown} · available: ${listed}` }
           }
-          if (outcome.kind === 'cancelled') return { kind: 'success', text: 'Cancelled' }
+          // Dismissing the picker changes nothing, so the result says what
+          // stayed in force rather than a bare "Cancelled" — the reader gets
+          // the answer they opened the picker to find.
+          if (outcome.kind === 'cancelled') {
+            return {
+              kind: 'success',
+              text: currentDisplay === undefined
+                ? 'Cancelled'
+                : `Kept model as ${currentDisplay}`,
+            }
+          }
           const picked = models.find(option => routeLabel(option.provider, option.model) === outcome.value)
           if (picked === undefined) return { kind: 'error', text: `Unknown model: ${outcome.value}` }
-          return applyRoute(picked.provider, picked.model)
+          return applyRoute(picked.provider, picked.model, picked.name)
         }
 
         // A direct set: an explicit `provider/model`, else a bare model id
         // resolved against the catalog (unambiguous only).
-        const models = await discoverRoutes(llm)
+        const models = routes
         const slash = wanted.indexOf('/')
         if (slash > 0) {
           const provider = wanted.slice(0, slash)
@@ -164,12 +197,12 @@ export function apply(ctx: Context): void {
             const known = models.map(option => routeLabel(option.provider, option.model)).join(' · ')
             return { kind: 'error', text: `Unknown model: ${wanted} · available: ${known}` }
           }
-          return applyRoute(provider, model)
+          return applyRoute(provider, model, routes.find(option => option.provider === provider && option.model === model)?.name)
         }
         const matches = models.filter(option => option.model === wanted)
         if (matches.length === 1) {
           const only = matches[0]!
-          return applyRoute(only.provider, only.model)
+          return applyRoute(only.provider, only.model, only.name)
         }
         if (matches.length > 1) {
           const providers = matches.map(option => option.provider).join(' · ')
